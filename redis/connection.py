@@ -7,6 +7,7 @@ import sys
 import threading
 import warnings
 import msgpack
+import time
 
 try:
     import ssl
@@ -159,6 +160,7 @@ class SocketBuffer(object):
         self.bytes_written = 0
         # number of bytes read from the buffer
         self.bytes_read = 0
+        self.unpacker = msgpack.Unpacker(None)
 
     @property
     def length(self):
@@ -208,6 +210,24 @@ class SocketBuffer(object):
 
         return data[:-2]
 
+    def read_and_decode(self, length):
+        length = length + 2  # make sure to read the \r\n terminator
+        # make sure we've read enough data from the socket
+        if length > self.length:
+            self._read_from_socket(length - self.length)
+
+        self._buffer.seek(self.bytes_read)
+        self.unpacker.feed(self._buffer.read(length - 2))
+        result = self.unpacker.unpack()
+        self.bytes_read += length
+
+        # purge the buffer when we've consumed it all so it doesn't
+        # grow forever
+        if self.bytes_read == self.bytes_written:
+            self.purge()
+
+        return result
+
     def readline(self):
         buf = self._buffer
         buf.seek(self.bytes_read)
@@ -246,6 +266,7 @@ class SocketBuffer(object):
             pass
         self._buffer = None
         self._sock = None
+        self.unpacker = None
 
 
 class PythonParser(BaseParser):
@@ -319,8 +340,10 @@ class PythonParser(BaseParser):
             # TODO: IF command=HGETALL and it is value (odd indexed), then decode it
             if command == 'HGETALL' and index % 2 == 1:
                 # print('Unpacking through here...')
-                unpacker = msgpack.Unpacker(self._buffer, length)
-                response = unpacker.unpack()
+                # start_time = time.time()
+                # unpacker = msgpack.Unpacker(self._buffer, length)
+                response = self._buffer.read_and_decode(length)
+                # print('Time taken: {}'.format(time.time() - start_time))
             else:
                 response = self._buffer.read(length)
         # multi-bulk response
