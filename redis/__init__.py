@@ -4,7 +4,8 @@ from redis.connection import (
     ConnectionPool,
     Connection,
     SSLConnection,
-    UnixDomainSocketConnection
+    UnixDomainSocketConnection,
+    PythonParser
 )
 from redis.utils import from_url
 from redis.exceptions import (
