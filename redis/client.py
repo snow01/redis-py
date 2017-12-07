@@ -678,7 +678,7 @@ class StrictRedis(object):
 
     def parse_response(self, connection, command_name, **options):
         "Parses a response from the Redis server"
-        response = connection.read_response()
+        response = connection.read_response(command=command_name)
         if command_name in self.response_callbacks:
             return self.response_callbacks[command_name](response, **options)
         return response

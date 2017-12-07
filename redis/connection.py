@@ -6,6 +6,7 @@ import socket
 import sys
 import threading
 import warnings
+import msgpack
 
 try:
     import ssl
@@ -280,7 +281,7 @@ class PythonParser(BaseParser):
     def can_read(self):
         return self._buffer and bool(self._buffer.length)
 
-    def read_response(self):
+    def read_response(self, command=None, index=0):
         response = self._buffer.readline()
         if not response:
             raise ConnectionError(SERVER_CLOSED_CONNECTION_ERROR)
@@ -315,13 +316,19 @@ class PythonParser(BaseParser):
             length = int(response)
             if length == -1:
                 return None
-            response = self._buffer.read(length)
+            # TODO: IF command=HGETALL and it is value (odd indexed), then decode it
+            if command == 'HGETALL' and index % 2 == 1:
+                # print('Unpacking through here...')
+                unpacker = msgpack.Unpacker(self._buffer, length)
+                response = unpacker.unpack()
+            else:
+                response = self._buffer.read(length)
         # multi-bulk response
         elif byte == '*':
             length = int(response)
             if length == -1:
                 return None
-            response = [self.read_response() for i in xrange(length)]
+            response = [self.read_response(command, i) for i in xrange(length)]
         if isinstance(response, bytes):
             response = self.encoder.decode(response)
         return response
@@ -372,7 +379,7 @@ class HiredisParser(BaseParser):
             self._next_response = self._reader.gets()
         return self._next_response is not False
 
-    def read_response(self):
+    def read_response(self, command=None):
         if not self._reader:
             raise ConnectionError(SERVER_CLOSED_CONNECTION_ERROR)
 
@@ -619,10 +626,10 @@ class Connection(object):
         return self._parser.can_read() or \
             bool(select([sock], [], [], timeout)[0])
 
-    def read_response(self):
+    def read_response(self, command=None):
         "Read the response from a previously sent command"
         try:
-            response = self._parser.read_response()
+            response = self._parser.read_response(command)
         except:
             self.disconnect()
             raise
